@@ -1,0 +1,11 @@
+{
+  "main": "vscode-tutorial.raml",
+  "name": "vscode-tutorial",
+  "classifier": "raml",
+  "organizationId": "",
+  "descriptorVersion": "1.0.0",
+  "tags": [],
+  "groupId": "",
+  "assetId": "vscode-tutorial",
+  "version": "1.0.0"
+}
