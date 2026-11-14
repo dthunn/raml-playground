@@ -1,6 +1,186 @@
 #%RAML 1.0
 title: vscode-tutorial
+version: v1
+# baseUri: https://api.example.com/{version}
+mediaType: application/json
 
+#
+# ---- Types -----------------------------------------------------------
+#
+types:
+  UserBase:
+    type: object
+    properties:
+      name:
+        type: string
+        minLength: 1
+      email:
+        type: string
+        pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+
+  User:
+    type: UserBase
+    properties:
+      id:
+        type: string
+        description: Unique identifier, assigned by the server
+      createdAt:
+        type: datetime
+    example:
+      id: "1"
+      name: "Ada Lovelace"
+      email: "ada@example.com"
+      createdAt: "2026-01-01T00:00:00Z"
+
+  # Update payloads omit server-assigned fields (id, createdAt) rather than
+  # inheriting them as optional overrides of User — RAML type inheritance
+  # only allows narrowing constraints, not relaxing required -> optional.
+  UserUpdate:
+    type: UserBase
+    example:
+      name: "Ada Lovelace"
+      email: "ada@example.com"
+
+  Error:
+    type: object
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    example:
+      code: "NOT_FOUND"
+      message: "User not found"
+
+#
+# ---- Traits ------------------------------------------------------------
+# Traits capture behavior shared across methods (headers/query params/responses)
+#
+traits:
+  secured:
+    usage: Apply to any method that requires an access token
+    headers:
+      Authorization:
+        description: Bearer token, e.g. "Bearer <token>"
+        type: string
+        required: true
+    responses:
+      401:
+        body:
+          application/json:
+            type: Error
+            example:
+              code: "UNAUTHORIZED"
+              message: "Missing or invalid credentials"
+
+  paginated:
+    usage: Apply to collection GET methods that return a list
+    queryParameters:
+      offset:
+        type: integer
+        default: 0
+        minimum: 0
+        required: false
+      limit:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+        required: false
+
+  searchable:
+    usage: Apply to collection GET methods that support free-text search
+    queryParameters:
+      q:
+        type: string
+        description: Free-text search term
+        required: false
+
+#
+# ---- Security scheme -----------------------------------------------------
+#
+securitySchemes:
+  bearerAuth:
+    type: x-bearer
+    description: Bearer-token authentication
+    describedBy:
+      headers:
+        Authorization:
+          type: string
+          required: true
+      responses:
+        401:
+          description: Invalid or missing token
+
+#
+# ---- Resource types --------------------------------------------------
+# Resource types capture the standard shape of a collection vs. a member
+#
+resourceTypes:
+  collection:
+    usage: Apply to top-level collections, e.g. /users
+    get?:
+      description: Retrieve a list of <<resourcePathName>>
+      responses:
+        200:
+          body:
+            application/json:
+              type: array
+              items: <<item>>
+    post?:
+      description: Create a new <<resourcePathName|!singularize>>
+      body:
+        application/json:
+          type: <<item>>
+      responses:
+        201:
+          body:
+            application/json:
+              type: <<item>>
+        400:
+          body:
+            application/json:
+              type: Error
+
+  member:
+    usage: Apply to a single resource addressed by id, e.g. /users/{userId}
+    get?:
+      description: Retrieve a single <<resourcePathName|!singularize>>
+      responses:
+        200:
+          body:
+            application/json:
+              type: <<item>>
+        404:
+          body:
+            application/json:
+              type: Error
+    put?:
+      description: Replace/update a <<resourcePathName|!singularize>>
+      body:
+        application/json:
+          type: <<itemUpdate>>
+      responses:
+        200:
+          body:
+            application/json:
+              type: <<item>>
+        404:
+          body:
+            application/json:
+              type: Error
+    delete?:
+      description: Delete a <<resourcePathName|!singularize>>
+      responses:
+        204:
+        404:
+          body:
+            application/json:
+              type: Error
+
+#
+# ---- Resources ---------------------------------------------------------
+#
 /hello:
   get:
     description: Returns a basic greeting
@@ -12,3 +192,23 @@ title: vscode-tutorial
               {
                 "message": "Hello, world!"
               }
+
+/users:
+  type: { collection: { item: User } }
+  get:
+    is: [secured, paginated, searchable]
+  post:
+    is: [secured]
+
+  /{userId}:
+    type: { member: { item: User, itemUpdate: UserUpdate } }
+    uriParameters:
+      userId:
+        type: string
+        description: Unique identifier of the user
+    get:
+      is: [secured]
+    put:
+      is: [secured]
+    delete:
+      is: [secured]
